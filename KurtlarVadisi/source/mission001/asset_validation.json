@@ -1,0 +1,338 @@
+{
+  "Memati": {
+    "textures": {
+      "hair": [
+        512,
+        512
+      ],
+      "hands": [
+        1024,
+        1024
+      ],
+      "memati": [
+        512,
+        512
+      ],
+      "suit": [
+        2048,
+        2048
+      ],
+      "eye_left": [
+        128,
+        128
+      ],
+      "eye_right": [
+        128,
+        128
+      ]
+    },
+    "required": [
+      "eye_left",
+      "eye_right",
+      "hair",
+      "hands",
+      "memati",
+      "suit"
+    ],
+    "missing": [],
+    "frames": [
+      "unnamed",
+      "Root",
+      " Pelvis",
+      " Spine",
+      " Spine1",
+      " Neck",
+      " Head",
+      "Jaw",
+      "L Brow",
+      "R Brow",
+      "Bip01 L Clavicle",
+      " L UpperArm",
+      " L ForeArm",
+      " L Hand",
+      " L Finger",
+      "L Finger01",
+      "Bip01 R Clavicle",
+      " R UpperArm",
+      " R ForeArm",
+      " R Hand",
+      " R Finger",
+      "R Finger01",
+      "L breast",
+      "R breast",
+      "Belly",
+      " L Thigh",
+      " L Calf",
+      " L Foot",
+      " L Toe0",
+      " R Thigh",
+      " R Calf",
+      " R Foot",
+      " R Toe0"
+    ],
+    "geometries": 1
+  },
+  "Abdulhey": {
+    "textures": {
+      "hands": [
+        1024,
+        1024
+      ],
+      "hair": [
+        512,
+        512
+      ],
+      "eye_right": [
+        128,
+        128
+      ],
+      "eye_left": [
+        128,
+        128
+      ],
+      "abdulhey": [
+        512,
+        512
+      ],
+      "suit": [
+        2048,
+        2048
+      ]
+    },
+    "required": [
+      "abdulhey",
+      "eye_left",
+      "eye_right",
+      "hair",
+      "hands",
+      "suit"
+    ],
+    "missing": [],
+    "frames": [
+      "unnamed",
+      "Root",
+      " Pelvis",
+      " Spine",
+      " Spine1",
+      " Neck",
+      " Head",
+      "Jaw",
+      "L Brow",
+      "R Brow",
+      "Bip01 L Clavicle",
+      " L UpperArm",
+      " L ForeArm",
+      " L Hand",
+      " L Finger",
+      "L Finger01",
+      "Bip01 R Clavicle",
+      " R UpperArm",
+      " R ForeArm",
+      " R Hand",
+      " R Finger",
+      "R Finger01",
+      "L breast",
+      "R breast",
+      "Belly",
+      " L Thigh",
+      " L Calf",
+      " L Foot",
+      " L Toe0",
+      " R Thigh",
+      " R Calf",
+      " R Foot",
+      " R Toe0"
+    ],
+    "geometries": 1
+  },
+  "BMW_X5": {
+    "textures": {
+      "ak47": [
+        64,
+        64
+      ],
+      "backblue_64": [
+        256,
+        256
+      ],
+      "bmwx5": [
+        256,
+        256
+      ],
+      "brigada": [
+        256,
+        256
+      ],
+      "car01": [
+        256,
+        256
+      ],
+      "carpet": [
+        128,
+        128
+      ],
+      "carx5": [
+        256,
+        256
+      ],
+      "chrome": [
+        256,
+        256
+      ],
+      "dash": [
+        256,
+        256
+      ],
+      "forwheel": [
+        256,
+        256
+      ],
+      "indoor": [
+        256,
+        256
+      ],
+      "pokemon": [
+        256,
+        256
+      ],
+      "pushka": [
+        64,
+        64
+      ],
+      "torpedo": [
+        256,
+        256
+      ],
+      "toycop": [
+        128,
+        128
+      ],
+      "toysaab": [
+        256,
+        256
+      ],
+      "uzi": [
+        64,
+        64
+      ],
+      "white": [
+        128,
+        128
+      ],
+      "white64": [
+        128,
+        128
+      ],
+      "whitea128": [
+        128,
+        128
+      ],
+      "tunnel": [
+        256,
+        256
+      ],
+      "new_x5": [
+        512,
+        512
+      ],
+      "body": [
+        128,
+        128
+      ],
+      "chrome2": [
+        64,
+        64
+      ],
+      "aykut": [
+        128,
+        128
+      ],
+      "polatalemdar": [
+        128,
+        128
+      ],
+      "edityasak,": [
+        128,
+        128
+      ]
+    },
+    "required": [
+      "ak47",
+      "backblue_64",
+      "bmwx5",
+      "body",
+      "brigada",
+      "car01",
+      "carpet",
+      "carx5",
+      "dash",
+      "forwheel",
+      "indoor",
+      "new_x5",
+      "pokemon",
+      "pushka",
+      "torpedo",
+      "toycop",
+      "tunnel",
+      "uzi",
+      "white",
+      "white64",
+      "whitea128"
+    ],
+    "missing": [],
+    "frames": [
+      "bmw_x5",
+      "chassis_dummy",
+      "fara",
+      "extra1",
+      "extra2",
+      "chassis_hi",
+      "ug_nitro",
+      "wheel_lf_dummy",
+      "wheel_rf_dummy",
+      "wheel_rf",
+      "wheel_lb_dummy",
+      "wheel_rb_dummy",
+      "taillights",
+      "headlights",
+      "bump_front_dummy",
+      "bump_front_hi_ok",
+      "bump_front_hi_dam",
+      "bonnet_dummy",
+      "bonnet_hi_ok",
+      "bonnet_hi_dam",
+      "door_lf_dummy",
+      "door_lf_hi_ok",
+      "door_lf_hi_dam",
+      "door_rf_dummy",
+      "door_rf_hi_ok",
+      "door_rf_hi_dam",
+      "wing_lf_dummy",
+      "wing_rf_dummy",
+      "door_lr_dummy",
+      "door_lr_hi_ok",
+      "door_lr_hi_dam",
+      "door_rr_dummy",
+      "door_rr_hi_ok",
+      "door_rr_hi_dam",
+      "boot_dummy",
+      "boot_hi_ok",
+      "boot_hi_dam",
+      "bump_rear_dummy",
+      "bump_rear_hi_ok",
+      "bump_rear_hi_dam",
+      "windscreen_dummy",
+      "windscreen_hi_ok",
+      "windscreen_hi_dam",
+      "exhaust",
+      "ped_frontseat",
+      "ped_backseat",
+      "steerwheel_dummy",
+      "steerwheel",
+      "Engine",
+      "headlights3",
+      "headlights2"
+    ],
+    "geometries": 24
+  }
+}

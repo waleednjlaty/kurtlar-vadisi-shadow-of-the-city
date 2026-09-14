@@ -1,0 +1,107 @@
+# This repository lives beside a GTA San Andreas installation. The game
+# installation is ignored; only the curated project files below are tracked.
+/*
+!/.gitignore
+!/.gitattributes
+!/README.md
+!/docs/
+!/docs/**
+!/cleo/
+!/cleo/README.md
+!/moonloader/
+!/modloader/
+!/KurtlarVadisi/
+
+# CLEO is a local dependency; track only this project note.
+cleo/*
+!cleo/README.md
+
+# Only the active campaign and its entry point belong in the runtime tree.
+moonloader/*
+!moonloader/KV_Main.lua
+!moonloader/KurtlarVadisi/
+!moonloader/KurtlarVadisi/**
+
+# Only this project's ModLoader package belongs in the runtime tree.
+modloader/*
+!modloader/KurtlarVadisi/
+!modloader/KurtlarVadisi/**
+
+# Only the editable model, mission checks, textures, and small build helpers
+# belong in the source tree.
+KurtlarVadisi/source/*
+!KurtlarVadisi/source/ASSET_NOTES.md
+!KurtlarVadisi/source/polat.blend
+!KurtlarVadisi/source/mission001/
+!KurtlarVadisi/source/mission001/**
+!KurtlarVadisi/source/textures/
+KurtlarVadisi/source/textures/*
+!KurtlarVadisi/source/textures/polat*.png
+!KurtlarVadisi/source/tools/
+KurtlarVadisi/source/tools/*
+!KurtlarVadisi/source/tools/*.py
+!KurtlarVadisi/source/tools/*.lua
+!KurtlarVadisi/source/tools/*.cs
+!KurtlarVadisi/source/tools/sa_opcodes.json
+
+# Keep the active runtime tree small and reproducible.
+moonloader/KurtlarVadisi/audio/**/*.mp3
+moonloader/KurtlarVadisi/audio/**/*.wav
+moonloader/KurtlarVadisi/playlist/**/*.mp3
+moonloader/KurtlarVadisi/playlist/**/*.wav
+moonloader/KurtlarVadisi/debug/**
+moonloader/KurtlarVadisi/data/*.ini
+moonloader/KurtlarVadisi/backups/
+moonloader/KurtlarVadisi/legacy_backup/
+
+# Model recovery copies and disabled experiments.
+modloader/KurtlarVadisi/**/*.dff1
+modloader/KurtlarVadisi/**/*.txd1
+modloader/KurtlarVadisi/**/*.disabled
+modloader/KurtlarVadisi/**/*.disabeld
+
+# Runtime/editor noise and historical working data.
+**/*.log
+**/*.bak
+**/*.blend1
+**/*.tmp
+
+# Generated reports and inspection output.
+KurtlarVadisi/source/*_inspection.json
+KurtlarVadisi/source/*_validation.json
+KurtlarVadisi/source/*_validation.log
+KurtlarVadisi/source/*_audit.json
+KurtlarVadisi/source/*_audit.log
+KurtlarVadisi/source/*_import.log
+KurtlarVadisi/source/*_review.log
+KurtlarVadisi/source/*_build.log
+KurtlarVadisi/source/*_finalize.log
+KurtlarVadisi/source/eye_bounds.log
+KurtlarVadisi/source/topology.log
+KurtlarVadisi/source/protected_files_sha256.json
+KurtlarVadisi/source/mesh_validation.json
+KurtlarVadisi/source/lua_validation.log
+
+# Do not publish bundled installers, dependency binaries, or third-party
+# archives. Install them separately according to their own licenses.
+**/*.exe
+**/*.dll
+**/*.asi
+**/*.zip
+**/*.7z
+**/*.rar
+
+# Copyright-sensitive / large media from the local game installation.
+**/*.mp3
+**/*.wav
+**/*.ogg
+**/*.mpg
+**/*.img
+moonloader/README_AR.txt
+
+# Build output is installed into the game manually and is not source.
+KurtlarVadisi/staging/
+
+# Keep empty runtime directories available after clone.
+!moonloader/KurtlarVadisi/debug/.gitkeep
+!moonloader/KurtlarVadisi/data/.gitkeep

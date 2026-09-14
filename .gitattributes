@@ -1,0 +1,12 @@
+# Keep source files readable and stable across Windows/Linux checkouts.
+*.lua text eol=lf
+*.py text eol=lf
+*.cs text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.ini text eol=lf
+*.json text eol=lf
+*.dff binary
+*.txd binary
+*.png binary
+*.blend binary
