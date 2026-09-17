@@ -1,39 +1,72 @@
-KurtlarVadisi - Polat Alemdar player skin
-Development build for the public Shadow of the City project.
+KurtlarVadisi - Runtime Assets
+Shadow of the City - Development Build
 
-CONTROLS
-F5: activate Polat while standing on foot.
-F6: restore CJ while standing on foot.
-Wait for the on-screen success message. Switching is blocked in a vehicle,
-while swimming/jumping, during pauses and when player control is disabled.
+OVERVIEW
+This ModLoader package contains character, vehicle and other runtime assets
+used by Kurtlar Vadisi: Shadow of the City.
 
-INSTALLATION USED IN THIS PROJECT
-The canonical model files are skins/polat.dff and skins/polat.txd.
-The byte-identical runtime aliases are gta3.img/mafboss.dff and mafboss.txd.
-ModLoader replaces the existing pedestrian slot 113 (MAFBOSS) in memory.
-This also changes NPCs using MAFBOSS. No new model ID or limit adjuster is needed.
-The original gta3.img, peds.ide and CJ clothing assets are not edited.
-The existing Triboos_Test mod in slot 120 is left intact.
+POLAT PLAYER MODEL
+Polat Alemdar uses GTA San Andreas pedestrian model slot 113 (MAFBOSS).
 
-MoonLoader 0.26 does not automatically run this nested moonloader folder here.
-The small game-root moonloader/polat_player.lua bridge loads
-modloader/KurtlarVadisi/moonloader/polat_player.lua.
-Both that bridge and this ModLoader folder are required on another installation.
-Restart the game after installing/changing model files.
+Canonical model files:
+skins/polat.dff
+skins/polat.txd
 
-SOURCE
-The editable model is in the repository at KurtlarVadisi/source/polat.blend.
-The model adapts a pre-existing user asset and is rebound to the original
-MAFBOSS skeleton; it is not claimed to be a completely original sculpture.
-DragonFF is used locally for DFF and TXD import/export.
+Runtime aliases may also exist as:
+gta3.img/mafboss.dff
+gta3.img/mafboss.txd
+
+ModLoader replaces model slot 113 in memory.
+The original gta3.img is not modified directly.
+
+PLAYER INITIALIZATION
+Polat is handled automatically by the campaign runtime:
+
+moonloader/KV_Main.lua
+ -> moonloader/KurtlarVadisi/main.lua
+ -> moonloader/KurtlarVadisi/systems/player_model.lua
+
+The old standalone F5/F6 Polat player script is no longer part of the runtime.
+
+DEVELOPMENT SOURCE
+Editable Polat model:
+KurtlarVadisi/source/polat.blend
+
+Development textures:
+KurtlarVadisi/source/textures/
+
+Development tools:
+KurtlarVadisi/source/tools/
+
+POLAT POSTURE
+The old experimental upright posture implementation has been preserved only
+as development reference code:
+
+KurtlarVadisi/source/tools/polat_posture_reference.lua
+
+It must not be executed as a standalone MoonLoader script.
+
+A future integrated implementation may be added as:
+
+moonloader/KurtlarVadisi/systems/player_posture.lua
+
+and controlled by player_model.lua.
+
+CHARACTER ASSETS
+Additional campaign characters such as Memati and Abdulhey may be stored in
+this package for later missions.
+
+Their presence in the asset package does not mean they appear in Mission 001.
 
 ROLLBACK
-Close the game. Move this KurtlarVadisi mod folder and the root
-moonloader/polat_player.lua bridge outside their loader folders.
-The original game assets then take effect again.
+1. Close GTA San Andreas.
+2. Disable or move modloader/KurtlarVadisi.
+3. Start the game again.
 
-KNOWN EXISTING ISSUE
-moonloader/triboos_test.lua calls changePlayerModel, which does not exist here.
-That unrelated pre-existing script previously failed. This mod uses setPlayerModel.
+The original GTA San Andreas assets will then be used.
 
-Version: 0.1.0 development
+PROJECT
+Kurtlar Vadisi: Shadow of the City
+Vadi'nin Golgesi
+
+Development status: Active

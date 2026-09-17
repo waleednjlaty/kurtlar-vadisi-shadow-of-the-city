@@ -4,7 +4,7 @@ return {
     {
         id = '001',
         title = 'Geceye Donus',
-        module = 'KurtlarVadisi.missions.mission_001_night_return',
+        module = 'KurtlarVadisi.missions.mission_001_geceye_donus',
         progressKey = '001_geceye_donus',
         requiresCompleted = {},
         status = 'available',
