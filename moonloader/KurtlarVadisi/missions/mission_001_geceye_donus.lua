@@ -47,37 +47,42 @@ local function pedExists(ped)
     return ped and doesCharExist(ped)
 end
 
-local function distanceToCar(car, point)
-    if not car or not doesVehicleExist(car) then return 999999.0 end
-    local x, y, z = getCarCoordinates(car)
-    return math.sqrt((x - point.x) ^ 2 + (y - point.y) ^ 2 + (z - point.z) ^ 2)
+local function distance3d(ax, ay, az, bx, by, bz)
+    return math.sqrt((ax - bx) ^ 2 + (ay - by) ^ 2 + (az - bz) ^ 2)
+end
+
+local function carDistanceTo(point)
+    if not vehicleExists() then return 999999.0 end
+    local x, y, z = getCarCoordinates(M.car)
+    return distance3d(x, y, z, point.x, point.y, point.z)
 end
 
 local function playerDistanceTo(point)
     if not doesCharExist(PLAYER_PED) then return 999999.0 end
     local x, y, z = getCharCoordinates(PLAYER_PED)
-    return math.sqrt((x - point.x) ^ 2 + (y - point.y) ^ 2 + (z - point.z) ^ 2)
+    return distance3d(x, y, z, point.x, point.y, point.z)
 end
 
-local function roadDistance(a, b)
-    return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2 + (a.z - b.z) ^ 2)
-end
-
-local function loadRoadArea(point)
+local function loadArea(point)
     requestCollision(point.x, point.y)
     loadScene(point.x, point.y, point.z)
 end
 
 local function resolveStartRoadNode(point)
-    loadRoadArea(point)
+    loadArea(point)
     local x, y, z, heading = getClosestCarNodeWithHeading(point.x, point.y, point.z)
     assert(type(x) == 'number' and type(y) == 'number' and type(z) == 'number'
         and type(heading) == 'number', 'Could not resolve Mission 001 start road node')
 
-    local node = {x = x, y = y, z = z, heading = heading}
-    local delta = roadDistance(node, point)
-    assert(delta < 250.0, string.format('Mission 001 start road node is too far away: %.2f m', delta))
-    return node
+    local delta = distance3d(x, y, z, point.x, point.y, point.z)
+    assert(delta < 250.0,
+        string.format('Mission 001 start road node is too far away: %.2f m', delta))
+
+    log.info(string.format(
+        'Mission 001 start road node: %.2f %.2f %.2f heading %.2f (offset %.2fm)',
+        x, y, z, heading, delta))
+
+    return {x = x, y = y, z = z, heading = heading}
 end
 
 local function lookAtPlayer(dx, dy, dz)
@@ -92,7 +97,10 @@ local function validateMissionCar()
 end
 
 local function spawnMissionCar()
-    assert(getCharModel(PLAYER_PED) == C.polat, 'Polat must be ready before Mission 001 starts')
+    assert(getCharModel(PLAYER_PED) == C.polat,
+        'Polat must be ready before Mission 001 starts')
+    assert(V.bmw == 547,
+        'Mission 001 requires the PRIMO slot (547) for the local BMW E46 replacement')
 
     local p = M.startRoad
     M.car = E.spawnCar(V.bmw, p.x, p.y, p.z + 0.5, p.heading, false)
@@ -103,22 +111,46 @@ local function spawnMissionCar()
     setCarProofs(M.car, true, true, true, true, true)
     setCarEngineOn(M.car, true)
 
+    -- Spawn Polat close to the driver's door, then let the normal enter task
+    -- place him in the correct seat.  This avoids passenger/driver races.
     local px, py, pz = getOffsetFromCarInWorldCoords(M.car, -2.2, 0.0, 0.5)
     setCharCoordinates(PLAYER_PED, px, py, pz)
     setCharHeading(PLAYER_PED, p.heading)
     taskEnterCarAsDriver(PLAYER_PED, M.car, 12000)
 
-    log.info(string.format('BMW E46 spawned using model %d (%s)', V.bmw, V.modelName or 'primo'))
+    log.info(string.format('BMW E46 spawned: model=%d alias=%s colour=%d/%d',
+        V.bmw, V.modelName or 'primo', V.primaryColour or 0, V.secondaryColour or 0))
 end
 
 local function spawnMessenger()
+    -- Anchor the meeting to Polat's actual exit position at the restaurant.
+    -- These offsets keep the messenger close enough for a clean exchange while
+    -- avoiding dependence on the exact angle at which the player parked.
     local x, y, z = getCharCoordinates(PLAYER_PED)
-    M.messenger = E.spawnChar(4, C.messenger, x + 5.0, y + 3.0, z, 180.0, false)
+    M.meetAnchor = {x = x, y = y, z = z}
+
+    M.messenger = E.spawnChar(4, C.messenger,
+        x + 5.0, y + 3.0, z, 180.0, true)
     assert(pedExists(M.messenger), 'Messenger creation failed')
 
     setCharProofs(M.messenger, true, true, true, true, true)
     taskGoStraightToCoord(M.messenger, x + 1.2, y, z, 4, 12000)
-    log.info('Unknown Messenger spawned for envelope exchange')
+    log.info(string.format(
+        'Unknown Messenger spawned: anchor %.2f %.2f %.2f, spawn offset +5.0/+3.0',
+        x, y, z))
+end
+
+local function setReturnToCarObjective()
+    local x, y, z = getCarCoordinates(M.car)
+    M.returnCarPoint = {x = x, y = y, z = z, radius = 6.0}
+    objective.set('BMW E46 ye don.', x, y, z, M.returnCarPoint.radius)
+    dialogue.show('objective', 5000)
+end
+
+local function setHeadquartersObjective()
+    local p = L.headquarters
+    objective.set('Karargaha git.', p.x, p.y, p.z, p.radius)
+    dialogue.show('objective', 6000)
 end
 
 function M.start()
@@ -128,29 +160,34 @@ function M.start()
     M.done = false
     M.car = nil
     M.messenger = nil
+    M.meetAnchor = nil
+    M.returnCarPoint = nil
     M.origin = {getCharCoordinates(PLAYER_PED)}
 
     radio.disableForMission(M.id)
     camera.begin()
 
     M.startRoad = resolveStartRoadNode(L.approach)
-    loadRoadArea(M.startRoad)
+    loadArea(M.startRoad)
 
     dialogue.load()
-    weather.start()
+    weather.start() -- 02:00 + rainy weather for the full mission.
     setCurrentCharWeapon(PLAYER_PED, 0)
     requestAnimation('DEALER')
-
     audio.path()
+
     spawnMissionCar()
-    assert(M.epoch == runtime.epoch, 'Mission spawn cancelled by lifecycle change')
+    assert(M.epoch == runtime.epoch,
+        'Mission spawn cancelled by lifecycle change')
 
     state('INTRO_ENTER_CAR')
-    log.info('Mission 001 initialized: Polat alone, BMW E46, night return')
+    log.info('Mission 001 initialized: Polat alone / BMW E46 / night and rain')
 end
 
 function M.update()
-    assert(M.epoch == runtime.epoch and runtime.worldReady(), 'Mission lifecycle changed')
+    assert(M.epoch == runtime.epoch and runtime.worldReady(),
+        'Mission lifecycle changed')
+
     weather.update()
     validateMissionCar()
 
@@ -158,14 +195,16 @@ function M.update()
 
     if M.state == 'INTRO_ENTER_CAR' then
         camera.black = 1
+        if vehicleExists() then camera.carShot(M.car, 1) end
 
-        if vehicleExists() then
-            camera.carShot(M.car, 1)
-        end
+        if isCharInCar(PLAYER_PED, M.car)
+            and getDriverOfCar(M.car) == PLAYER_PED then
 
-        if isCharInCar(PLAYER_PED, M.car) and getDriverOfCar(M.car) == PLAYER_PED then
             local musicOk = audio.start()
-            if not musicOk then log.warn('Mission music unavailable; continuing without it') end
+            if not musicOk then
+                log.warn('Mission music unavailable; continuing without it')
+            end
+
             dialogue.show('title', 5000)
             state('INTRO_CINEMATIC')
         elseif t > 15000 then
@@ -178,7 +217,8 @@ function M.update()
 
         if t > 5000 then
             camera.restore()
-            objective.set('Restorana git.', L.restaurant.x, L.restaurant.y, L.restaurant.z, L.restaurant.radius)
+            objective.set('Restorana git.',
+                L.restaurant.x, L.restaurant.y, L.restaurant.z, L.restaurant.radius)
             dialogue.show('objective', 5000)
             state('DRIVE_TO_RESTAURANT')
         end
@@ -198,7 +238,8 @@ function M.update()
             camera.carShot(M.car, 3)
             taskLeaveCar(PLAYER_PED, M.car)
             state('RESTAURANT_EXIT')
-            log.info('Polat reached the restaurant alone')
+            log.info(string.format(
+                'Restaurant reached: BMW distance %.2fm', carDistanceTo(L.restaurant)))
         end
 
     elseif M.state == 'RESTAURANT_EXIT' then
@@ -241,24 +282,34 @@ function M.update()
 
         once('depart', t > 9800, function()
             local x, y, z = getCharCoordinates(M.messenger)
-            taskGoStraightToCoord(M.messenger, x + 14.0, y + 10.0, z, 4, 20000)
+            taskGoStraightToCoord(M.messenger,
+                x + 14.0, y + 10.0, z, 4, 20000)
         end)
 
         if t > 13800 then
             dialogue.clear()
             clearCharTasks(PLAYER_PED)
             camera.restore()
+            setReturnToCarObjective()
+            state('RETURN_TO_BMW')
+            log.info('Envelope scene complete; Polat returns to the BMW E46 alone')
+        end
 
-            objective.set('BMW E46 ile karargaha git.',
-                L.headquarters.x, L.headquarters.y, L.headquarters.z, L.headquarters.radius)
-            dialogue.show('objective', 6000)
+    elseif M.state == 'RETURN_TO_BMW' then
+        if isCharInCar(PLAYER_PED, M.car)
+            and getDriverOfCar(M.car) == PLAYER_PED then
+
+            objective.clear()
+            setHeadquartersObjective()
             state('DRIVE_TO_BASE')
-            log.info('Envelope scene complete; Polat leaves alone for HQ')
+            log.info('Polat re-entered the BMW E46; HQ objective active')
+        elseif t > 90000 then
+            error('Polat did not return to the BMW E46')
         end
 
     elseif M.state == 'DRIVE_TO_BASE' then
         local base = L.headquarters
-        local carDistance = distanceToCar(M.car, base)
+        local carDistance = carDistanceTo(base)
         local polatDistance = playerDistanceTo(base)
 
         if isCharInCar(PLAYER_PED, M.car)
@@ -275,31 +326,35 @@ function M.update()
             camera.black = 0
             taskLeaveCar(PLAYER_PED, M.car)
             state('BASE_CUTSCENE')
-            log.info(string.format('HQ reached: BMW %.2fm, Polat %.2fm', carDistance, polatDistance))
+            log.info(string.format(
+                'HQ reached: BMW %.2fm / Polat %.2fm',
+                carDistance, polatDistance))
         end
 
     elseif M.state == 'BASE_CUTSCENE' then
         local p = L.headquarters
         camera.black = 0
 
-        if t < 6000 then
+        if t < 3500 then
             camera.shot(p.x - 18.0, p.y - 18.0, p.z + 11.0,
                 p.x, p.y + 12.0, p.z + 5.0)
         else
             lookAtPlayer(3.0, -4.0, 1.2)
         end
 
-        once('fade_music', t > 7500, function()
-            audio.fadeOut(2500)
+        once('fade_music', t > 4000, function()
+            audio.fadeOut(1500)
         end)
 
-        if t > 7500 then
-            camera.black = math.min(1, (t - 7500) / 2500)
+        if t > 4000 then
+            camera.black = math.min(1, (t - 4000) / 1500)
         end
 
-        if t > 10500 then
+        if t > 6000 then
             if isCharInAnyCar(PLAYER_PED) then
-                if t > 20000 then error('Polat could not leave the BMW E46 at HQ') end
+                if t > 15000 then
+                    error('Polat could not leave the BMW E46 at HQ')
+                end
                 return
             end
 
@@ -311,9 +366,7 @@ function M.update()
 
     elseif M.state == 'MISSION_COMPLETE' then
         camera.black = 1
-        if t > 6200 then
-            M.done = true
-        end
+        if t > 6200 then M.done = true end
     end
 end
 
@@ -353,7 +406,8 @@ function M.cleanup(failed)
         clean('return to start', function()
             requestCollision(M.origin[1], M.origin[2])
             loadScene(M.origin[1], M.origin[2], M.origin[3])
-            setCharCoordinates(PLAYER_PED, M.origin[1], M.origin[2], M.origin[3])
+            setCharCoordinates(PLAYER_PED,
+                M.origin[1], M.origin[2], M.origin[3])
         end)
     end
 end
