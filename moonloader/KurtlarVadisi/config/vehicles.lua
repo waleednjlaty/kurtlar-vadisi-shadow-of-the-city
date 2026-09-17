@@ -1,11 +1,12 @@
--- Keep the story's BMW role, but use the verified vanilla four-seat Stretch
--- until a replacement has passed BOTH asset checks and in-game testing.
--- Installation belongs to ModLoader; never preload the vehicle pack here.
+-- Mission 001 story vehicle: black BMW E46.
+-- The local ModLoader replacement uses GTA SA's PRIMO slot (model ID 547),
+-- so the replacement files must be named primo.dff and primo.txd.
 return {
-    bmw=409,
-    displayName='Vanilla Stretch (BMW safety fallback)',
-    customReplacementEnabled=false,
-    primaryColour=0,
-    secondaryColour=0,
-    cinematicSpeed=12.0
+    bmw = 547,
+    modelName = 'primo',
+    displayName = 'BMW E46',
+    customReplacementEnabled = true,
+    primaryColour = 0,
+    secondaryColour = 0,
+    cinematicSpeed = 12.0
 }
