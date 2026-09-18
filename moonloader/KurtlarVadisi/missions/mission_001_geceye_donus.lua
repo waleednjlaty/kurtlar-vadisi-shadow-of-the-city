@@ -103,24 +103,25 @@ local function resolveRestaurantRoadNode(point)
 end
 
 local function resolveRestaurantParkingPoint(point, roadNode)
-    -- Put the final stop between the restaurant entrance anchor and its
-    -- nearest road node.  This moves the BMW off the traffic lane and into
-    -- the frontage/parking area instead of stopping ~20-30m away.
-    local dx = roadNode.x - point.x
-    local dy = roadNode.y - point.y
+    -- Stay close to the verified road node.  The previous midpoint-style
+    -- parking target pushed the BMW too far toward the building geometry.
+    -- Move only a small shoulder distance toward the restaurant so the car
+    -- stops beside the frontage without entering the wall.
+    local dx = point.x - roadNode.x
+    local dy = point.y - roadNode.y
     local length = math.sqrt(dx * dx + dy * dy)
     assert(length > 0.01, 'Restaurant parking vector is invalid')
 
-    local frontageDistance = math.min(9.0, math.max(5.0, length * 0.48))
-    local x = point.x + (dx / length) * frontageDistance
-    local y = point.y + (dy / length) * frontageDistance
-    local z = point.z
+    local shoulderDistance = 3.6
+    local x = roadNode.x + (dx / length) * shoulderDistance
+    local y = roadNode.y + (dy / length) * shoulderDistance
+    local z = roadNode.z
 
     log.info(string.format(
-        'Restaurant parking point: %.2f %.2f %.2f (%.2fm from restaurant / %.2fm from road node)',
-        x, y, z, frontageDistance, distance3d(x, y, z, roadNode.x, roadNode.y, roadNode.z)))
+        'Restaurant safe parking point: %.2f %.2f %.2f (%.2fm from road node / %.2fm from restaurant)',
+        x, y, z, shoulderDistance, distance3d(x, y, z, point.x, point.y, point.z)))
 
-    return {x = x, y = y, z = z, radius = 3.25}
+    return {x = x, y = y, z = z, radius = 4.25}
 end
 
 local function lookAtPlayer(dx, dy, dz)
@@ -256,7 +257,7 @@ local function issueRestaurantParkingDrive()
     assert(vehicleExists(), 'BMW E46 unavailable for restaurant parking')
     assert(M.restaurantParking, 'Restaurant parking target unavailable')
 
-    local speed = 5.5
+    local speed = 4.0
     clearCharTasks(PLAYER_PED)
     setCarEngineOn(M.car, true)
     setCarCruiseSpeed(M.car, speed)
@@ -289,16 +290,24 @@ local function updateRestaurantParkingWatchdog()
 
     local distance = carDistanceTo(M.restaurantParking)
     if distance <= M.restaurantParking.radius then return end
-    if now() - (M.parkingDriveKick or 0) < 3000 then return end
+    if now() - (M.parkingDriveKick or 0) < 3500 then return end
 
     local ok, speed = pcall(getCarSpeed, M.car)
     speed = ok and tonumber(speed) or 0.0
     local previous = M.parkingDriveDistance or distance
     local progress = previous - distance
 
-    if math.abs(speed) < 0.35 or progress < 0.25 then
+    -- Never reissue when already close to the parking target.  The old logic
+    -- could make the BMW overshoot, circle back and hit the building.
+    if distance <= 6.0 then
+        setCarCruiseSpeed(M.car, 0)
+        setCarForwardSpeed(M.car, 0)
+        return
+    end
+
+    if math.abs(speed) < 0.25 or progress < -1.0 then
         log.warn(string.format(
-            'BMW parking approach stalled: speed %.2f progress %.2f distance %.2f; reissuing',
+            'BMW parking approach needs one retry: speed %.2f progress %.2f distance %.2f',
             speed, progress, distance))
         issueRestaurantParkingDrive()
     else
@@ -420,7 +429,7 @@ function M.update()
         updateRestaurantParkingWatchdog()
 
         local parkingDistance = carDistanceTo(M.restaurantParking)
-        if parkingDistance <= M.restaurantParking.radius
+        if parkingDistance <= M.restaurantParking.radius + 0.75
             and isCharInCar(PLAYER_PED, M.car)
             and getDriverOfCar(M.car) == PLAYER_PED then
 
