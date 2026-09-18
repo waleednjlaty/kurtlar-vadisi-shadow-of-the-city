@@ -102,6 +102,27 @@ local function resolveRestaurantRoadNode(point)
     return {x = x, y = y, z = z}
 end
 
+local function resolveRestaurantParkingPoint(point, roadNode)
+    -- Put the final stop between the restaurant entrance anchor and its
+    -- nearest road node.  This moves the BMW off the traffic lane and into
+    -- the frontage/parking area instead of stopping ~20-30m away.
+    local dx = roadNode.x - point.x
+    local dy = roadNode.y - point.y
+    local length = math.sqrt(dx * dx + dy * dy)
+    assert(length > 0.01, 'Restaurant parking vector is invalid')
+
+    local frontageDistance = math.min(9.0, math.max(5.0, length * 0.48))
+    local x = point.x + (dx / length) * frontageDistance
+    local y = point.y + (dy / length) * frontageDistance
+    local z = point.z
+
+    log.info(string.format(
+        'Restaurant parking point: %.2f %.2f %.2f (%.2fm from restaurant / %.2fm from road node)',
+        x, y, z, frontageDistance, distance3d(x, y, z, roadNode.x, roadNode.y, roadNode.z)))
+
+    return {x = x, y = y, z = z, radius = 3.25}
+end
+
 local function lookAtPlayer(dx, dy, dz)
     local x, y, z = getCharCoordinates(PLAYER_PED)
     camera.shot(x + dx, y + dy, z + dz, x, y, z + 0.5)
@@ -144,9 +165,9 @@ local function spawnMessenger()
     -- is therefore always directly in front of Polat regardless of how the BMW
     -- was parked or which direction Polat faces after exiting.
     local okSpawn, sx, sy, sz = pcall(
-        getOffsetFromCharInWorldCoords, PLAYER_PED, 0.0, 6.0, 0.0)
+        getOffsetFromCharInWorldCoords, PLAYER_PED, 0.0, 4.0, 0.0)
     local okMeet, mx, my, mz = pcall(
-        getOffsetFromCharInWorldCoords, PLAYER_PED, 0.0, 1.6, 0.0)
+        getOffsetFromCharInWorldCoords, PLAYER_PED, 0.0, 1.8, 0.0)
 
     assert(okSpawn and okMeet
         and type(sx) == 'number' and type(sy) == 'number' and type(sz) == 'number'
@@ -231,6 +252,61 @@ local function updateAutomaticDriveWatchdog()
     end
 end
 
+local function issueRestaurantParkingDrive()
+    assert(vehicleExists(), 'BMW E46 unavailable for restaurant parking')
+    assert(M.restaurantParking, 'Restaurant parking target unavailable')
+
+    local speed = 5.5
+    clearCharTasks(PLAYER_PED)
+    setCarEngineOn(M.car, true)
+    setCarCruiseSpeed(M.car, speed)
+    setCarDrivingStyle(M.car, 2)
+
+    taskCarDriveToCoord(
+        PLAYER_PED,
+        M.car,
+        M.restaurantParking.x,
+        M.restaurantParking.y,
+        M.restaurantParking.z,
+        speed,
+        0,
+        0,
+        2
+    )
+
+    M.parkingDriveKick = now()
+    M.parkingDriveDistance = carDistanceTo(M.restaurantParking)
+
+    log.info(string.format(
+        'BMW final parking approach issued: target %.2f %.2f %.2f distance %.2fm',
+        M.restaurantParking.x, M.restaurantParking.y, M.restaurantParking.z,
+        M.parkingDriveDistance))
+end
+
+local function updateRestaurantParkingWatchdog()
+    if not vehicleExists() or not M.restaurantParking then return end
+    if getDriverOfCar(M.car) ~= PLAYER_PED then return end
+
+    local distance = carDistanceTo(M.restaurantParking)
+    if distance <= M.restaurantParking.radius then return end
+    if now() - (M.parkingDriveKick or 0) < 3000 then return end
+
+    local ok, speed = pcall(getCarSpeed, M.car)
+    speed = ok and tonumber(speed) or 0.0
+    local previous = M.parkingDriveDistance or distance
+    local progress = previous - distance
+
+    if math.abs(speed) < 0.35 or progress < 0.25 then
+        log.warn(string.format(
+            'BMW parking approach stalled: speed %.2f progress %.2f distance %.2f; reissuing',
+            speed, progress, distance))
+        issueRestaurantParkingDrive()
+    else
+        M.parkingDriveKick = now()
+        M.parkingDriveDistance = distance
+    end
+end
+
 local function setReturnToCarObjective()
     local x, y, z = getCarCoordinates(M.car)
     M.returnCarPoint = {x = x, y = y, z = z, radius = 6.0}
@@ -256,6 +332,8 @@ function M.start()
     M.returnCarPoint = nil
     M.lastDriveKick = 0
     M.lastDriveDistance = nil
+    M.parkingDriveKick = 0
+    M.parkingDriveDistance = nil
     M.origin = {getCharCoordinates(PLAYER_PED)}
 
     radio.disableForMission(M.id)
@@ -263,6 +341,7 @@ function M.start()
 
     M.startRoad = resolveStartRoadNode(L.approach)
     M.restaurantRoad = resolveRestaurantRoadNode(L.restaurant)
+    M.restaurantParking = resolveRestaurantParkingPoint(L.restaurant, M.restaurantRoad)
     loadArea(M.startRoad)
 
     dialogue.load()
@@ -322,7 +401,26 @@ function M.update()
         updateAutomaticDriveWatchdog()
 
         local distance = carDistanceTo(M.restaurantRoad)
-        if distance < 12.0
+        if distance < 16.0
+            and isCharInCar(PLAYER_PED, M.car)
+            and getDriverOfCar(M.car) == PLAYER_PED then
+
+            issueRestaurantParkingDrive()
+            state('PARK_AT_RESTAURANT')
+            log.info(string.format(
+                'BMW reached restaurant road approach at %.2fm; starting final parking approach',
+                distance))
+        elseif t > 90000 then
+            error('Automatic BMW drive could not reach the restaurant approach')
+        end
+
+    elseif M.state == 'PARK_AT_RESTAURANT' then
+        camera.black = 0
+        camera.carShot(M.car, 3)
+        updateRestaurantParkingWatchdog()
+
+        local parkingDistance = carDistanceTo(M.restaurantParking)
+        if parkingDistance <= M.restaurantParking.radius
             and isCharInCar(PLAYER_PED, M.car)
             and getDriverOfCar(M.car) == PLAYER_PED then
 
@@ -330,12 +428,16 @@ function M.update()
             clearCharTasks(PLAYER_PED)
             setCarCruiseSpeed(M.car, 0)
             setCarForwardSpeed(M.car, 0)
+            log.info(string.format(
+                'BMW parked in front of restaurant: parking distance %.2fm / restaurant distance %.2fm',
+                parkingDistance, carDistanceTo(L.restaurant)))
+
             taskLeaveCar(PLAYER_PED, M.car)
             state('RESTAURANT_EXIT')
-            log.info(string.format(
-                'Automatic BMW route complete: restaurant road distance %.2fm', distance))
-        elseif t > 90000 then
-            error('Automatic BMW drive could not reach the restaurant')
+        elseif t > 30000 then
+            error(string.format(
+                'BMW could not finish restaurant parking approach; remaining %.2fm',
+                parkingDistance))
         end
 
     elseif M.state == 'RESTAURANT_EXIT' then
@@ -359,13 +461,33 @@ function M.update()
 
         if not M.messengerArrivedAt then
             local distance = messengerDistanceToMeetingPoint()
-            if distance <= 1.25 then
+
+            -- Normal walk-in first.  Some SA collision layouts around the
+            -- Welcome Pump can trap the ped on the curb.  If that happens,
+            -- snap only the final few metres to the already validated meeting
+            -- point so the cutscene remains deterministic.
+            if distance <= 1.40 then
                 clearCharTasks(M.messenger)
+                setCharHeading(M.messenger, getCharHeading(PLAYER_PED) + 180.0)
                 taskLookAtChar(M.messenger, PLAYER_PED, 12000)
                 taskLookAtChar(PLAYER_PED, M.messenger, 12000)
                 M.messengerArrivedAt = now()
                 log.info(string.format(
                     'Messenger reached front of Polat: distance %.2fm', distance))
+            elseif t > 5500 and distance <= 6.0 then
+                clearCharTasks(M.messenger)
+                setCharCoordinates(
+                    M.messenger,
+                    M.meetAnchor.x,
+                    M.meetAnchor.y,
+                    M.meetAnchor.z
+                )
+                setCharHeading(M.messenger, getCharHeading(PLAYER_PED) + 180.0)
+                taskLookAtChar(M.messenger, PLAYER_PED, 12000)
+                taskLookAtChar(PLAYER_PED, M.messenger, 12000)
+                M.messengerArrivedAt = now()
+                log.warn(string.format(
+                    'Messenger curb fallback used; previous distance %.2fm', distance))
             elseif t > 15000 then
                 error(string.format(
                     'Messenger could not reach Polat; remaining distance %.2fm', distance))
