@@ -85,6 +85,23 @@ local function resolveStartRoadNode(point)
     return {x = x, y = y, z = z, heading = heading}
 end
 
+local function resolveRestaurantRoadNode(point)
+    loadArea(point)
+    local x, y, z = getClosestCarNode(point.x, point.y, point.z)
+    assert(type(x) == 'number' and type(y) == 'number' and type(z) == 'number',
+        'Could not resolve Mission 001 restaurant road node')
+
+    local delta = distance3d(x, y, z, point.x, point.y, point.z)
+    assert(delta < 250.0,
+        string.format('Mission 001 restaurant road node is too far away: %.2f m', delta))
+
+    log.info(string.format(
+        'Mission 001 restaurant road node: %.2f %.2f %.2f (offset %.2fm)',
+        x, y, z, delta))
+
+    return {x = x, y = y, z = z}
+end
+
 local function lookAtPlayer(dx, dy, dz)
     local x, y, z = getCharCoordinates(PLAYER_PED)
     camera.shot(x + dx, y + dy, z + dz, x, y, z + 0.5)
@@ -123,21 +140,95 @@ local function spawnMissionCar()
 end
 
 local function spawnMessenger()
-    -- Anchor the meeting to Polat's actual exit position at the restaurant.
-    -- These offsets keep the messenger close enough for a clean exchange while
-    -- avoiding dependence on the exact angle at which the player parked.
-    local x, y, z = getCharCoordinates(PLAYER_PED)
-    M.meetAnchor = {x = x, y = y, z = z}
+    -- Use Polat-local offsets instead of world X/Y offsets.  The meeting point
+    -- is therefore always directly in front of Polat regardless of how the BMW
+    -- was parked or which direction Polat faces after exiting.
+    local okSpawn, sx, sy, sz = pcall(
+        getOffsetFromCharInWorldCoords, PLAYER_PED, 0.0, 6.0, 0.0)
+    local okMeet, mx, my, mz = pcall(
+        getOffsetFromCharInWorldCoords, PLAYER_PED, 0.0, 1.6, 0.0)
 
+    assert(okSpawn and okMeet
+        and type(sx) == 'number' and type(sy) == 'number' and type(sz) == 'number'
+        and type(mx) == 'number' and type(my) == 'number' and type(mz) == 'number',
+        'Could not resolve Messenger front-of-Polat offsets')
+
+    M.meetAnchor = {x = mx, y = my, z = mz}
+    M.messengerArrivedAt = nil
+
+    local heading = getCharHeading(PLAYER_PED)
     M.messenger = E.spawnChar(4, C.messenger,
-        x + 5.0, y + 3.0, z, 180.0, true)
+        sx, sy, sz, heading + 180.0, true)
     assert(pedExists(M.messenger), 'Messenger creation failed')
 
     setCharProofs(M.messenger, true, true, true, true, true)
-    taskGoStraightToCoord(M.messenger, x + 1.2, y, z, 4, 12000)
+    taskGoStraightToCoord(M.messenger, mx, my, mz, 2, 15000)
+
     log.info(string.format(
-        'Unknown Messenger spawned: anchor %.2f %.2f %.2f, spawn offset +5.0/+3.0',
-        x, y, z))
+        'Unknown Messenger route: spawn %.2f %.2f %.2f -> front of Polat %.2f %.2f %.2f',
+        sx, sy, sz, mx, my, mz))
+end
+
+local function messengerDistanceToMeetingPoint()
+    if not pedExists(M.messenger) or not M.meetAnchor then return 999999.0 end
+    local x, y, z = getCharCoordinates(M.messenger)
+    return distance3d(x, y, z, M.meetAnchor.x, M.meetAnchor.y, M.meetAnchor.z)
+end
+
+local function issueAutomaticRestaurantDrive()
+    assert(vehicleExists(), 'BMW E46 unavailable for automatic drive')
+    assert(M.restaurantRoad, 'Restaurant road target unavailable')
+    assert(isCharInCar(PLAYER_PED, M.car)
+        and getDriverOfCar(M.car) == PLAYER_PED,
+        'Polat must be the BMW E46 driver before automatic drive')
+
+    local speed = math.max(tonumber(V.cinematicSpeed) or 12.0, 12.0)
+    setCarEngineOn(M.car, true)
+    setCarCruiseSpeed(M.car, speed)
+    setCarDrivingStyle(M.car, 2)
+
+    taskCarDriveToCoord(
+        PLAYER_PED,
+        M.car,
+        M.restaurantRoad.x,
+        M.restaurantRoad.y,
+        M.restaurantRoad.z,
+        speed,
+        0,
+        0,
+        2
+    )
+
+    M.lastDriveKick = now()
+    M.lastDriveDistance = carDistanceTo(M.restaurantRoad)
+
+    log.info(string.format(
+        'Automatic BMW drive issued: target %.2f %.2f %.2f speed %.2f',
+        M.restaurantRoad.x, M.restaurantRoad.y, M.restaurantRoad.z, speed))
+end
+
+local function updateAutomaticDriveWatchdog()
+    if not vehicleExists() or not M.restaurantRoad then return end
+    if getDriverOfCar(M.car) ~= PLAYER_PED then return end
+
+    local distance = carDistanceTo(M.restaurantRoad)
+    if distance < 12.0 then return end
+    if now() - (M.lastDriveKick or 0) < 3500 then return end
+
+    local ok, speed = pcall(getCarSpeed, M.car)
+    speed = ok and tonumber(speed) or 0.0
+    local previous = M.lastDriveDistance or distance
+    local progress = previous - distance
+
+    if math.abs(speed) < 0.5 or progress < 0.5 then
+        log.warn(string.format(
+            'Automatic BMW drive stalled: speed %.2f progress %.2f; reissuing task',
+            speed, progress))
+        issueAutomaticRestaurantDrive()
+    else
+        M.lastDriveKick = now()
+        M.lastDriveDistance = distance
+    end
 end
 
 local function setReturnToCarObjective()
@@ -161,13 +252,17 @@ function M.start()
     M.car = nil
     M.messenger = nil
     M.meetAnchor = nil
+    M.messengerArrivedAt = nil
     M.returnCarPoint = nil
+    M.lastDriveKick = 0
+    M.lastDriveDistance = nil
     M.origin = {getCharCoordinates(PLAYER_PED)}
 
     radio.disableForMission(M.id)
     camera.begin()
 
     M.startRoad = resolveStartRoadNode(L.approach)
+    M.restaurantRoad = resolveRestaurantRoadNode(L.restaurant)
     loadArea(M.startRoad)
 
     dialogue.load()
@@ -216,30 +311,31 @@ function M.update()
         camera.carShot(M.car, t < 2500 and 1 or 2)
 
         if t > 5000 then
-            camera.restore()
-            objective.set('Restorana git.',
-                L.restaurant.x, L.restaurant.y, L.restaurant.z, L.restaurant.radius)
             dialogue.show('objective', 5000)
-            state('DRIVE_TO_RESTAURANT')
+            issueAutomaticRestaurantDrive()
+            state('AUTO_DRIVE_TO_RESTAURANT')
         end
 
-    elseif M.state == 'DRIVE_TO_RESTAURANT' then
-        if objective.reached()
+    elseif M.state == 'AUTO_DRIVE_TO_RESTAURANT' then
+        camera.black = 0
+        camera.carShot(M.car, math.min(4, math.floor(t / 5500) + 1))
+        updateAutomaticDriveWatchdog()
+
+        local distance = carDistanceTo(M.restaurantRoad)
+        if distance < 12.0
             and isCharInCar(PLAYER_PED, M.car)
             and getDriverOfCar(M.car) == PLAYER_PED then
 
-            objective.clear()
             dialogue.clear()
-            setCarForwardSpeed(M.car, 0)
+            clearCharTasks(PLAYER_PED)
             setCarCruiseSpeed(M.car, 0)
-
-            camera.begin()
-            camera.black = 0
-            camera.carShot(M.car, 3)
+            setCarForwardSpeed(M.car, 0)
             taskLeaveCar(PLAYER_PED, M.car)
             state('RESTAURANT_EXIT')
             log.info(string.format(
-                'Restaurant reached: BMW distance %.2fm', carDistanceTo(L.restaurant)))
+                'Automatic BMW route complete: restaurant road distance %.2fm', distance))
+        elseif t > 90000 then
+            error('Automatic BMW drive could not reach the restaurant')
         end
 
     elseif M.state == 'RESTAURANT_EXIT' then
@@ -261,11 +357,25 @@ function M.update()
         camera.black = 0
         lookAtPlayer(3.0, -4.0, 1.4)
 
-        once('gesture', t > 2800, function()
-            clearCharTasks(M.messenger)
-            taskLookAtChar(M.messenger, PLAYER_PED, 5000)
-            taskLookAtChar(PLAYER_PED, M.messenger, 5000)
+        if not M.messengerArrivedAt then
+            local distance = messengerDistanceToMeetingPoint()
+            if distance <= 1.25 then
+                clearCharTasks(M.messenger)
+                taskLookAtChar(M.messenger, PLAYER_PED, 12000)
+                taskLookAtChar(PLAYER_PED, M.messenger, 12000)
+                M.messengerArrivedAt = now()
+                log.info(string.format(
+                    'Messenger reached front of Polat: distance %.2fm', distance))
+            elseif t > 15000 then
+                error(string.format(
+                    'Messenger could not reach Polat; remaining distance %.2fm', distance))
+            end
+            return
+        end
 
+        local meetTime = now() - M.messengerArrivedAt
+
+        once('gesture', meetTime > 600, function()
             if hasAnimationLoaded('DEALER') then
                 taskPlayAnim(M.messenger, 'DEALER_DEAL', 'DEALER', 4.0,
                     false, false, false, false, 2300)
@@ -274,19 +384,21 @@ function M.update()
             end
         end)
 
-        once('envelope', t > 5200, function()
+        once('envelope', meetTime > 3000, function()
             dialogue.show('envelope', 7000)
             printStringNow('Selim Karahan  /  Pier 69  /  02:30', 7000)
             log.info('Envelope received: Selim Karahan / Pier 69 / 02:30')
         end)
 
-        once('depart', t > 9800, function()
-            local x, y, z = getCharCoordinates(M.messenger)
-            taskGoStraightToCoord(M.messenger,
-                x + 14.0, y + 10.0, z, 4, 20000)
+        once('depart', meetTime > 8000, function()
+            local ok, x, y, z = pcall(
+                getOffsetFromCharInWorldCoords, M.messenger, 0.0, 14.0, 0.0)
+            if ok and type(x) == 'number' then
+                taskGoStraightToCoord(M.messenger, x, y, z, 3, 20000)
+            end
         end)
 
-        if t > 13800 then
+        if meetTime > 12000 then
             dialogue.clear()
             clearCharTasks(PLAYER_PED)
             camera.restore()
