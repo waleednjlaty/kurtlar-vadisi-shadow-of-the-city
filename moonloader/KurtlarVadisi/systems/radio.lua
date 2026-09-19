@@ -299,6 +299,12 @@ function M.update(context)
         M.car = car
         M.nextAt = now + (tonumber(config.settleMs) or 750)
         M.retryAt = M.nextAt
+
+        -- Mission audio must never overlap the GTA station, even during the
+        -- short vehicle-settle window after entering a newly spawned car.
+        if M.owner or (context and context.mission == true) then
+            forceNativeRadioOff()
+        end
         return
     end
 
@@ -337,12 +343,17 @@ function M.update(context)
         return
     end
 
-    -- Prevent the GTA station from mixing with our local playlist.
-    forceNativeRadioOff()
-
     local customActive = updateCustom(now)
-    if not customActive and config.fallbackToNative then
+
+    if customActive then
+        -- Prevent the GTA station from mixing with our local playlist.
+        forceNativeRadioOff()
+    elseif config.fallbackToNative then
+        -- Missing/unreadable local media should never leave the player with
+        -- permanent silence; retry the custom playlist later.
         restoreNativeRadio()
+    else
+        forceNativeRadioOff()
     end
 end
 
