@@ -1,4 +1,11 @@
--- GTA SA SCM channels: 0..10 = stations, 11 = USER TRACKS, 12 = OFF.
--- Policy only. Future custom songs belong to a separate playlist.
-return { missionOverride = true, offChannel = 12, defaultChannel = 0,
-    settleMs = 750, pollMs = 750 }
+-- Native GTA SA radio policy.
+-- Outside missions the stock stations are replaced by GTA's own USER TRACKS
+-- station.  Mission audio can still force the native radio OFF cleanly.
+return {
+    missionOverride = true,
+    replaceNativeStations = true,
+    userTracksChannel = 11,
+    offChannel = 12,
+    settleMs = 250,
+    pollMs = 250
+}
