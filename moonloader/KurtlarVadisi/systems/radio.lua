@@ -72,23 +72,49 @@ end
 
 local function readChannel()
     if type(getRadioChannel) ~= 'function' then return nil end
+
     local ok, channel = pcall(getRadioChannel)
     if not ok or type(channel) ~= 'number' or channel < 0 or channel > 12 then
         return nil
     end
+
     return channel
 end
 
-local function forceNativeRadioOff()
+local function setChannel(channel)
     if type(setRadioChannel) ~= 'function' then return false end
-    local channel = readChannel()
-    if channel == config.offChannel then return true end
-    local ok, err = pcall(setRadioChannel, config.offChannel)
+    local ok, err = pcall(setRadioChannel, channel)
     if not ok then
-        log.warn('Could not disable GTA radio: ' .. tostring(err))
+        log.warn('Radio channel change failed: ' .. tostring(err))
         return false
     end
     return true
+end
+
+local function forceNativeRadioOff()
+    local channel = readChannel()
+    if channel == nil then return false end
+    if channel == config.offChannel then return true end
+    return setChannel(config.offChannel)
+end
+
+local function restoreNativeRadio()
+    local channel = readChannel()
+    if channel == nil then return false end
+    if channel ~= config.offChannel then
+        M.lastStation = channel
+        return true
+    end
+
+    local station = M.previous[M.car]
+    if station == nil or station == config.offChannel then
+        station = M.lastStation
+    end
+    if station == nil or station == config.offChannel then
+        station = config.defaultChannel
+    end
+
+    return setChannel(station)
 end
 
 local function stopCustom(reason)
@@ -127,7 +153,7 @@ local function playableChoices()
 end
 
 local function startCustom(now)
-    if not config.customEnabled or M.owner then return false end
+    if not config.customEnabled or M.owner or M.paused then return false end
     if M.stream then return true end
 
     local root = radioRoot()
@@ -156,9 +182,11 @@ local function startCustom(now)
 
                 pcall(
                     printStringNow,
-                    string.format('KVS RADIO - TRACK %d/%d', track.index, #(config.tracks or {})),
+                    string.format('KVS RADIO - TRACK %d/%d',
+                        track.index, #(config.tracks or {})),
                     2500
                 )
+
                 log.info('Custom radio playing: ' .. track.file)
                 return true
             end
@@ -177,7 +205,7 @@ end
 local function updateCustom(now)
     if not config.customEnabled or M.owner then
         stopCustom('disabled or mission override')
-        return
+        return false
     end
 
     if M.stream then
@@ -186,13 +214,15 @@ local function updateCustom(now)
             stopCustom('track finished')
             M.retryAt = now
         else
-            return
+            return true
         end
     end
 
     if now >= (M.retryAt or 0) then
-        startCustom(now)
+        return startCustom(now)
     end
+
+    return false
 end
 
 function M.pause(value)
@@ -234,7 +264,7 @@ function M.restoreAfterMission()
     M.car = nil
     M.nextAt = 0
     M.retryAt = 0
-    -- The next in-car update starts the custom station again.
+    -- The next in-car update starts the local station again.
 end
 
 function M.update(context)
@@ -244,10 +274,15 @@ function M.update(context)
     end
 
     if not isCharInAnyCar(PLAYER_PED) then
-        if M.car and M.previous[M.car] ~= nil then
+        if M.car and M.previous[M.car] ~= nil
+            and M.previous[M.car] ~= config.offChannel then
             M.lastStation = M.previous[M.car]
+        end
+
+        if M.car then
             M.previous[M.car] = nil
         end
+
         stopCustom('player left vehicle')
         M.car = nil
         M.nextAt = 0
@@ -277,7 +312,6 @@ function M.update(context)
     end
 
     local channel = readChannel()
-
     if channel ~= nil and M.previous[car] == nil then
         M.previous[car] = channel
         if channel ~= config.offChannel then
@@ -292,14 +326,24 @@ function M.update(context)
     end
 
     if context and context.mission == true then
+        forceNativeRadioOff()
         stopCustom('mission active')
         return
     end
 
-    -- The custom playlist owns in-car music outside missions.  GTA's native
-    -- radio is kept OFF to avoid two stations playing at once.
+    if not config.customEnabled then
+        stopCustom('custom radio disabled')
+        restoreNativeRadio()
+        return
+    end
+
+    -- Prevent the GTA station from mixing with our local playlist.
     forceNativeRadioOff()
-    updateCustom(now)
+
+    local customActive = updateCustom(now)
+    if not customActive and config.fallbackToNative then
+        restoreNativeRadio()
+    end
 end
 
 return M
