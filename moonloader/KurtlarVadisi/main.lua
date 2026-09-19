@@ -12,7 +12,10 @@ function M.run()
         local exists = doesCharExist(PLAYER_PED)
         local playing = exists and isPlayerPlaying(PLAYER_HANDLE)
         local inCar = playing and isCharInAnyCar(PLAYER_PED)
+
         audio.pause(paused)
+        radio.pause(paused)
+
         if not paused and playing then
             runtime.ready = true
             if not manager.initialized then manager.initialize() end
@@ -20,7 +23,10 @@ function M.run()
             if not ready then
                 local ok, value = xpcall(player.ensure, debug.traceback)
                 ready = ok and value
-                if not ok then log.exception('Player initialization', value); player.nextAt = getGameTimer() + 5000 end
+                if not ok then
+                    log.exception('Player initialization', value)
+                    player.nextAt = getGameTimer() + 5000
+                end
             end
             manager.setGameplayReady(ready)
             radio.update({ mission = manager.isActive() })
@@ -31,8 +37,15 @@ function M.run()
             -- while the current world's player handle still exists.
             manager.update()
         end
-        audio.updateFreeRoam({ now = getGameTimer(), gameplay = playing,
-            paused = paused, mission = manager.isActive(), inCar = inCar })
+
+        audio.updateFreeRoam({
+            now = getGameTimer(),
+            gameplay = playing,
+            paused = paused,
+            mission = manager.isActive(),
+            inCar = inCar
+        })
+
         if playing and not paused then manager.draw() end
     end
 end
