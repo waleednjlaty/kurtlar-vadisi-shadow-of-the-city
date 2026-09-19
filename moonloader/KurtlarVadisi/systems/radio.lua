@@ -1,90 +1,305 @@
 local config = require 'KurtlarVadisi.config.radio'
 local runtime = require 'KurtlarVadisi.systems.runtime'
 local log = require 'KurtlarVadisi.systems.logger'
-local M = { owner = nil, previous = {}, car = nil, nextAt = 0,
-    lastStation = config.defaultChannel, freeRoamChecked = false }
+
+local M = {
+    owner = nil,
+    previous = {},
+    car = nil,
+    nextAt = 0,
+    retryAt = 0,
+    lastStation = config.defaultChannel,
+    stream = nil,
+    currentTrack = nil,
+    lastTrack = nil,
+    paused = false
+}
+
+local function fileExists(path)
+    local f = io.open(path, 'rb')
+    if not f then return false end
+    f:close()
+    return true
+end
+
+local function safeRelease(stream)
+    if not stream then return end
+    pcall(setAudioStreamState, stream, 0)
+    pcall(releaseAudioStream, stream)
+end
+
+local function loadStream(path)
+    local ok, a, b = pcall(loadAudioStream, path)
+    if not ok then
+        log.warn('Custom radio loadAudioStream failed: ' .. tostring(a))
+        return nil
+    end
+
+    if type(a) == 'userdata' then return a end
+    if type(a) == 'number' and b == nil and a ~= 0 then return a end
+    if type(a) == 'boolean' and a
+        and (type(b) == 'userdata' or type(b) == 'number')
+        and b ~= 0 then
+        return b
+    end
+
+    return nil
+end
+
 local function playerCar()
     -- 00D9 can return -1 for a live vehicle in MoonLoader 0.26.5.
-    -- 0811 reads the vehicle the actor is actually using.
-    for _, name in ipairs({'getCarCharIsUsing', 'storeCarCharIsInNoSave', 'storeCarCharIsIn'}) do
+    for _, name in ipairs({
+        'getCarCharIsUsing',
+        'storeCarCharIsInNoSave',
+        'storeCarCharIsIn'
+    }) do
         local getter = _G[name]
         if type(getter) == 'function' then
             local ok, car = pcall(getter, PLAYER_PED)
-            if ok and type(car) == 'number' and car >= 0 and doesVehicleExist(car)
-                and isCharInCar(PLAYER_PED, car) then return car end
+            if ok and type(car) == 'number' and car >= 0
+                and doesVehicleExist(car)
+                and isCharInCar(PLAYER_PED, car) then
+                return car
+            end
         end
     end
     return nil
 end
+
+local function radioRoot()
+    return getGameDirectory() .. '\\' .. config.playlistDir
+end
+
+local function readChannel()
+    if type(getRadioChannel) ~= 'function' then return nil end
+    local ok, channel = pcall(getRadioChannel)
+    if not ok or type(channel) ~= 'number' or channel < 0 or channel > 12 then
+        return nil
+    end
+    return channel
+end
+
+local function forceNativeRadioOff()
+    if type(setRadioChannel) ~= 'function' then return false end
+    local channel = readChannel()
+    if channel == config.offChannel then return true end
+    local ok, err = pcall(setRadioChannel, config.offChannel)
+    if not ok then
+        log.warn('Could not disable GTA radio: ' .. tostring(err))
+        return false
+    end
+    return true
+end
+
+local function stopCustom(reason)
+    if not M.stream then return end
+
+    local stream = M.stream
+    M.stream = nil
+    M.currentTrack = nil
+    safeRelease(stream)
+
+    if reason then
+        log.info('Custom radio stopped: ' .. tostring(reason))
+    end
+end
+
+local function playableChoices()
+    local root = radioRoot()
+    local choices = {}
+
+    for index, file in ipairs(config.tracks or {}) do
+        if file ~= M.lastTrack and fileExists(root .. file) then
+            choices[#choices + 1] = { index = index, file = file }
+        end
+    end
+
+    -- If only one local track exists, allow it to repeat after it finishes.
+    if #choices == 0 then
+        for index, file in ipairs(config.tracks or {}) do
+            if fileExists(root .. file) then
+                choices[#choices + 1] = { index = index, file = file }
+            end
+        end
+    end
+
+    return choices
+end
+
+local function startCustom(now)
+    if not config.customEnabled or M.owner then return false end
+    if M.stream then return true end
+
+    local root = radioRoot()
+    local choices = playableChoices()
+
+    while #choices > 0 do
+        local pick = math.random(1, #choices)
+        local track = table.remove(choices, pick)
+        local path = root .. track.file
+        local stream = loadStream(path)
+
+        if stream then
+            local volumeOk = pcall(
+                setAudioStreamVolume,
+                stream,
+                math.max(0.0, math.min(1.0, tonumber(config.volume) or 0.35))
+            )
+            local loopOk = pcall(setAudioStreamLooped, stream, false)
+            local playOk = pcall(setAudioStreamState, stream, 1)
+
+            if volumeOk and loopOk and playOk then
+                M.stream = stream
+                M.currentTrack = track.file
+                M.lastTrack = track.file
+                M.retryAt = 0
+
+                pcall(
+                    printStringNow,
+                    string.format('KVS RADIO - TRACK %d/%d', track.index, #(config.tracks or {})),
+                    2500
+                )
+                log.info('Custom radio playing: ' .. track.file)
+                return true
+            end
+
+            safeRelease(stream)
+        end
+
+        log.warn('Custom radio skipped unreadable track: ' .. track.file)
+    end
+
+    M.retryAt = now + (tonumber(config.retryMs) or 5000)
+    log.warn('Custom radio: no playable local tracks found in ' .. root)
+    return false
+end
+
+local function updateCustom(now)
+    if not config.customEnabled or M.owner then
+        stopCustom('disabled or mission override')
+        return
+    end
+
+    if M.stream then
+        local ok, state = pcall(getAudioStreamState, M.stream)
+        if not ok or state == 0 then
+            stopCustom('track finished')
+            M.retryAt = now
+        else
+            return
+        end
+    end
+
+    if now >= (M.retryAt or 0) then
+        startCustom(now)
+    end
+end
+
+function M.pause(value)
+    value = value == true
+    if value == M.paused then return end
+    M.paused = value
+
+    if M.stream then
+        pcall(setAudioStreamState, M.stream, value and 2 or 3)
+        log.info('Custom radio ' .. (value and 'paused' or 'resumed'))
+    end
+end
+
 function M.reset()
-    M.owner = nil; M.previous = {}; M.car = nil; M.nextAt = 0
-    M.lastStation = config.defaultChannel; M.freeRoamChecked = false
+    stopCustom()
+    M.owner = nil
+    M.previous = {}
+    M.car = nil
+    M.nextAt = 0
+    M.retryAt = 0
+    M.lastStation = config.defaultChannel
+    M.currentTrack = nil
+    M.lastTrack = nil
+    M.paused = false
 end
+
 function M.disableForMission(id)
-    if config.missionOverride then
-        M.owner = id or 'mission'; M.car = nil; M.nextAt = 0; M.freeRoamChecked = false
-    end
+    if not config.missionOverride then return end
+
+    M.owner = id or 'mission'
+    M.car = nil
+    M.nextAt = 0
+    M.retryAt = 0
+    stopCustom('mission ' .. tostring(M.owner))
 end
+
 function M.restoreAfterMission()
-    M.owner = nil; M.car = nil; M.nextAt = 0; M.freeRoamChecked = false
-    -- Restore when the same vehicle is occupied; never retune another vehicle.
+    M.owner = nil
+    M.car = nil
+    M.nextAt = 0
+    M.retryAt = 0
+    -- The next in-car update starts the custom station again.
 end
+
 function M.update(context)
-    if not runtime.worldReady() or not isPlayerPlaying(PLAYER_HANDLE) then return end
-    if not isCharInAnyCar(PLAYER_PED) then
-        M.car = nil; M.freeRoamChecked = false; return
+    if not runtime.worldReady() or not isPlayerPlaying(PLAYER_HANDLE) then
+        stopCustom('gameplay unavailable')
+        return
     end
+
+    if not isCharInAnyCar(PLAYER_PED) then
+        if M.car and M.previous[M.car] ~= nil then
+            M.lastStation = M.previous[M.car]
+            M.previous[M.car] = nil
+        end
+        stopCustom('player left vehicle')
+        M.car = nil
+        M.nextAt = 0
+        return
+    end
+
     local car = playerCar()
     if not car then return end
+
     local now = getGameTimer()
+
     if M.car ~= car then
-        M.car = car; M.nextAt = now + config.settleMs; M.freeRoamChecked = false; return
+        stopCustom('vehicle changed')
+        M.car = car
+        M.nextAt = now + (tonumber(config.settleMs) or 750)
+        M.retryAt = M.nextAt
+        return
     end
-    if now < M.nextAt then return end
-    M.nextAt = now + config.pollMs
-    if type(getRadioChannel) ~= 'function' or type(setRadioChannel) ~= 'function' then return end
-    local ok, channel = pcall(getRadioChannel)
-    if not ok or type(channel) ~= 'number' or channel < 0 or channel > 12 then return end
+
+    if M.paused or now < M.nextAt then return end
+    M.nextAt = now + (tonumber(config.pollMs) or 500)
+
     for oldCar in pairs(M.previous) do
-        if not doesVehicleExist(oldCar) then M.previous[oldCar] = nil end
-    end
-    if M.owner then
-        if M.previous[car] == nil then
-            M.previous[car] = channel
-            if channel ~= config.offChannel then M.lastStation = channel end
+        if not doesVehicleExist(oldCar) then
+            M.previous[oldCar] = nil
         end
+    end
+
+    local channel = readChannel()
+
+    if channel ~= nil and M.previous[car] == nil then
+        M.previous[car] = channel
         if channel ~= config.offChannel then
-            local applied, err = pcall(setRadioChannel, config.offChannel)
-            if not applied then log.warn('Radio override unavailable: '..tostring(err)); return end
-            log.info('Mission radio OFF (SCM 12), vehicle=' .. car)
-        end
-    elseif context and context.mission == true then
-        return -- Another mission may choose its own radio policy.
-    elseif M.previous[car] ~= nil then
-        local previous = M.previous[car]; M.previous[car] = nil
-        if channel == config.offChannel and previous >= 0 and previous <= 12 and previous ~= channel then
-            local applied, err = pcall(setRadioChannel, previous)
-            if not applied then M.previous[car] = previous; log.warn('Radio restore deferred: '..tostring(err)); return end
-            log.info('Mission radio restored, station=' .. previous)
-            channel = previous
-        end
-        if channel ~= config.offChannel then M.lastStation = channel end
-        -- If the former station was OFF, the free-roam entry policy below
-        -- still selects a station once the mission override has ended.
-    end
-    if not M.owner and not (context and context.mission == true) then
-        if not M.freeRoamChecked then
-            if channel == config.offChannel then
-                local station = M.lastStation or config.defaultChannel
-                local applied, err = pcall(setRadioChannel, station)
-                if not applied then log.warn('Free-roam radio unavailable: '..tostring(err)); return end
-                log.info('Free-roam radio ON, station=' .. station)
-            end
-            M.freeRoamChecked = true
-        elseif channel ~= config.offChannel then
-            -- Preserve the player's station choice for the next car.
             M.lastStation = channel
         end
     end
+
+    if M.owner then
+        forceNativeRadioOff()
+        stopCustom('mission override')
+        return
+    end
+
+    if context and context.mission == true then
+        stopCustom('mission active')
+        return
+    end
+
+    -- The custom playlist owns in-car music outside missions.  GTA's native
+    -- radio is kept OFF to avoid two stations playing at once.
+    forceNativeRadioOff()
+    updateCustom(now)
 end
+
 return M
