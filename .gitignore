@@ -49,6 +49,8 @@ moonloader/KurtlarVadisi/audio/**/*.mp3
 moonloader/KurtlarVadisi/audio/**/*.wav
 moonloader/KurtlarVadisi/playlist/**/*.mp3
 moonloader/KurtlarVadisi/playlist/**/*.wav
+moonloader/KurtlarVadisi/radio/**/*.m4a
+moonloader/KurtlarVadisi/radio/**/*.aac
 moonloader/KurtlarVadisi/debug/**
 moonloader/KurtlarVadisi/data/*.ini
 moonloader/KurtlarVadisi/backups/
@@ -95,6 +97,8 @@ KurtlarVadisi/source/lua_validation.log
 **/*.mp3
 **/*.wav
 **/*.ogg
+**/*.m4a
+**/*.aac
 **/*.mpg
 **/*.img
 moonloader/README_AR.txt
